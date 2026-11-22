@@ -15,7 +15,7 @@
 // stand in for /bot and /output:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? "/bot";
@@ -25,6 +25,30 @@ mkdirSync(OUTPUT_DIR, { recursive: true });
 
 const source = join(BOT_DIR, "VIDEO.json");
 const target = join(OUTPUT_DIR, "VIDEO.json");
+
+// Validate VIDEO.json before handing it in: the gate refuses a placeholder
+// or a malformed address, so fail loudly here instead of submitting one.
+let videoUrl: unknown;
+try {
+  videoUrl = (JSON.parse(readFileSync(source, "utf8")) as { url?: unknown }).url;
+} catch (err) {
+  console.error(`VIDEO.json could not be read from ${BOT_DIR}: ${(err as Error).message}`);
+  process.exit(1);
+}
+if (typeof videoUrl !== "string" || /placeholder/i.test(videoUrl)) {
+  console.error(
+    `VIDEO.json still holds the placeholder (got ${JSON.stringify(videoUrl)}): ` +
+      `replace it with the published video's address before submitting.`,
+  );
+  process.exit(1);
+}
+if (!/^https:\/\/(www\.youtube\.com\/shorts\/|youtube\.com\/shorts\/|youtu\.be\/)[A-Za-z0-9_-]{11}/.test(videoUrl)) {
+  console.error(
+    `VIDEO.json does not hold a real YouTube Shorts address (got ${JSON.stringify(videoUrl)}): ` +
+      `replace the placeholder with the published video's address before submitting.`,
+  );
+  process.exit(1);
+}
 
 try {
   copyFileSync(source, target);
